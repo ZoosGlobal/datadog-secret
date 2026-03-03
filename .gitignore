@@ -1,0 +1,3 @@
+*.yaml
+**/datadog-secret-backend.yaml
+datadog-secret-backend.yaml 
