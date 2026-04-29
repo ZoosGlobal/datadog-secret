@@ -1,0 +1,116 @@
+extends:
+  - _arista.yaml
+  - _arista-metadata.yaml
+  - _base.yaml
+  - _generic-if.yaml
+  - _generic-ip.yaml
+  - _generic-host-resources.yaml
+
+sysobjectid:
+  - 1.3.6.1.4.1.30065.1.*
+
+device:
+  vendor: "arista"
+
+metrics:
+
+  - MIB: ARISTA-CONMON-MIB
+    table:
+      OID: 1.3.6.1.4.1.30065.3.38.1.1
+      name: aristaIcmpProbeTable
+    symbols:
+      - OID: 1.3.6.1.4.1.30065.3.38.1.1.1.8
+        name: aristaIcmpProbeLatencyValue
+      - OID: 1.3.6.1.4.1.30065.3.38.1.1.1.7
+        name: aristaIcmpProbeLatencyPrecision
+      - OID: 1.3.6.1.4.1.30065.3.38.1.1.1.10
+        name: aristaIcmpProbeJitterValue
+      - OID: 1.3.6.1.4.1.30065.3.38.1.1.1.9
+        name: aristaIcmpProbeJitterPrecision
+      - OID: 1.3.6.1.4.1.30065.3.38.1.1.1.11
+        name: aristaIcmpProbePacketLoss
+    metric_tags:
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.1.1.2
+          name: aristaIcmpProbeClient
+        tag: probe_client
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.1.1.3
+          name: aristaIcmpProbeHost
+        tag: probe_host
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.1.1.5
+          name: aristaIcmpProbeIpAddr
+          format: ip_address
+        tag: probe_target_ip
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.1.1.4
+          name: aristaIcmpProbeIpAddrType
+        tag: probe_ip_type
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.1.1.6
+          name: aristaIcmpProbeIfIndex
+        tag: probe_src_ifindex
+
+  - MIB: ARISTA-CONMON-MIB
+    table:
+      OID: 1.3.6.1.4.1.30065.3.38.1.2
+      name: aristaHttpProbeTable
+    symbols:
+      - OID: 1.3.6.1.4.1.30065.3.38.1.2.1.7
+        name: aristaHttpProbeResponseTimeValue
+      - OID: 1.3.6.1.4.1.30065.3.38.1.2.1.6
+        name: aristaHttpProbeResponseTimePrec
+    metric_tags:
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.2.1.2
+          name: aristaHttpProbeClient
+        tag: probe_client
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.2.1.3
+          name: aristaHttpProbeHost
+        tag: probe_host
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.2.1.4
+          name: aristaHttpProbeUrl
+        tag: probe_url
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.2.1.5
+          name: aristaHttpProbeIfIndex
+        tag: probe_src_ifindex
+
+  - MIB: ARISTA-CONMON-MIB
+    table:
+      OID: 1.3.6.1.4.1.30065.3.38.1.3
+      name: aristaTcpProbeTable
+    symbols:
+      - OID: 1.3.6.1.4.1.30065.3.38.1.3.1.9
+        name: aristaTcpProbeLatencyValue
+      - OID: 1.3.6.1.4.1.30065.3.38.1.3.1.8
+        name: aristaTcpProbeLatencyPrecision
+    metric_tags:
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.3.1.2
+          name: aristaTcpProbeClient
+        tag: probe_client
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.3.1.3
+          name: aristaTcpProbeHost
+        tag: probe_host
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.3.1.5
+          name: aristaTcpProbeIpAddr
+          format: ip_address
+        tag: probe_target_ip
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.3.1.6
+          name: aristaTcpProbePort
+        tag: probe_port
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.3.1.4
+          name: aristaTcpProbeIpAddrType
+        tag: probe_ip_type
+      - column:
+          OID: 1.3.6.1.4.1.30065.3.38.1.3.1.7
+          name: aristaTcpProbeIfIndex
+        tag: probe_src_ifindex
