@@ -1,0 +1,274 @@
+# =============================================================================
+# Custom Datadog SNMP Profile: Cisco StackWise (Catalyst 9300 / 3850)
+# Profile Name: cisco-catalyst-stackwise.yaml
+# Place in: /etc/datadog-agent/conf.d/snmp.d/profiles/
+# =============================================================================
+#
+# Covers stack-specific metrics from CISCO-STACKWISE-MIB not included in
+# Datadog's default Cisco profile. Works alongside the default cisco-catalyst
+# profile — this is an additive/extension profile.
+#
+# Supported Devices:
+#   - Cisco Catalyst 3850 (StackWise-480)
+#   - Cisco Catalyst 9300 (StackWise-480)
+#   - Cisco Catalyst 9300L (StackWise-320)
+#
+# How to use:
+#   Option A (recommended): Reference this profile explicitly in conf.yaml
+#   Option B: Place in profiles/ directory and reference by filename
+# =============================================================================
+
+extends:
+  - _base.yaml                        # Standard IF-MIB, sysDescr, etc.
+  - _generic-if.yaml                  # Interface-level metrics
+
+# Uncomment one of the sysobjectid blocks below to auto-match devices.
+# For mixed stacks (9300 + 3850), use manual profile reference in conf.yaml instead.
+
+# Cisco Catalyst 9300 sysObjectIDs (common variants):
+sysobjectid:
+  - 1.3.6.1.4.1.9.1.2862   # C9300-24T
+  - 1.3.6.1.4.1.9.1.2863   # C9300-48T
+  - 1.3.6.1.4.1.9.1.2864   # C9300-24P
+  - 1.3.6.1.4.1.9.1.2865   # C9300-48P
+  - 1.3.6.1.4.1.9.1.2872   # C9300-24UX
+  - 1.3.6.1.4.1.9.1.2876   # C9300-48UXM
+  - 1.3.6.1.4.1.9.1.2253   # WS-C3850-24T
+  - 1.3.6.1.4.1.9.1.2255   # WS-C3850-48T
+  - 1.3.6.1.4.1.9.1.2257   # WS-C3850-24P
+  - 1.3.6.1.4.1.9.1.2259   # WS-C3850-48P
+  - 1.3.6.1.4.1.9.1.2260   # WS-C3850-48F
+
+metadata:
+  device:
+    fields:
+      vendor:
+        value: cisco
+      type:
+        value: switch
+
+# =============================================================================
+# METRICS
+# =============================================================================
+
+metrics:
+
+  # ---------------------------------------------------------------------------
+  # CISCO-STACKWISE-MIB: Stack-Level Summary
+  # OID Base: 1.3.6.1.4.1.9.9.500
+  # ---------------------------------------------------------------------------
+
+  # Stack ring state — indicates whether the ring is complete or broken
+  - MIB: CISCO-STACKWISE-MIB
+    symbol:
+      OID: 1.3.6.1.4.1.9.9.500.1.1.1.0
+      name: cswRingRedundant
+    # Values: true(1) = ring is redundant (healthy), false(2) = partial/broken ring
+
+  # ---------------------------------------------------------------------------
+  # CISCO-STACKWISE-MIB: Per-Member Switch Table (cswSwitchInfoTable)
+  # Each row = one stack member; indexed by cswSwitchNumCurrent (member number)
+  # ---------------------------------------------------------------------------
+
+  - MIB: CISCO-STACKWISE-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.500.1.2.1
+      name: cswSwitchInfoTable
+    symbols:
+
+      # Switch state: ready(4), progressing(3), added(1), removed(2),
+      #               invalid(5), sdmMismatch(6), verMismatch(7),
+      #               featureMismatch(8), newMasterInit(9), provisioned(10),
+      #               invalid(11), removed(11)
+      - OID: 1.3.6.1.4.1.9.9.500.1.2.1.1.1
+        name: cswSwitchState
+
+      # Switch role: master(1), member(2), notMember(3), standby(4)
+      - OID: 1.3.6.1.4.1.9.9.500.1.2.1.1.2
+        name: cswSwitchRole
+
+      # Switch priority (1-15); higher = more likely to become active
+      - OID: 1.3.6.1.4.1.9.9.500.1.2.1.1.3
+        name: cswSwitchPriority
+
+      # Hardware version of the stack member
+      - OID: 1.3.6.1.4.1.9.9.500.1.2.1.1.4
+        name: cswSwitchHwVersion
+
+      # Software version running on the stack member
+      - OID: 1.3.6.1.4.1.9.9.500.1.2.1.1.5
+        name: cswSwitchSwVersion
+
+      # MAC address of the stack member (returned as string tag)
+      - OID: 1.3.6.1.4.1.9.9.500.1.2.1.1.6
+        name: cswSwitchMacAddress
+
+    metric_tags:
+      # Tag each row with the stack member number for dashboard filtering
+      - column:
+          OID: 1.3.6.1.4.1.9.9.500.1.2.1.1.7
+          name: cswSwitchNumCurrent
+        tag: stack_member
+
+  # ---------------------------------------------------------------------------
+  # CISCO-STACKWISE-MIB: Stack Port Table (cswStackPortInfoTable)
+  # Each row = one stack port on a member; shows port link state
+  # ---------------------------------------------------------------------------
+
+  - MIB: CISCO-STACKWISE-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.500.1.2.2
+      name: cswStackPortInfoTable
+    symbols:
+
+      # Stack port operational status: up(1), down(2), forcedDown(3)
+      - OID: 1.3.6.1.4.1.9.9.500.1.2.2.1.1
+        name: cswStackPortOperStatus
+
+    metric_tags:
+      - column:
+          OID: 1.3.6.1.4.1.9.9.500.1.2.2.1.2
+          name: cswStackPortNumber
+        tag: stack_port
+
+  # ---------------------------------------------------------------------------
+  # CISCO-ENTITY-SENSOR-MIB: Hardware Health per Stack Member
+  # Covers: temperature, fan, PSU sensors
+  # OID Base: 1.3.6.1.4.1.9.9.91
+  # ---------------------------------------------------------------------------
+
+  - MIB: CISCO-ENTITY-SENSOR-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.91.1.1.1
+      name: entSensorValueTable
+    symbols:
+
+      # Current sensor reading (integer; units depend on sensor type)
+      - OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.4
+        name: entSensorValue
+
+      # Sensor status: ok(1), unavailable(2), nonoperational(3)
+      - OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.5
+        name: entSensorStatus
+
+    metric_tags:
+      - column:
+          OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.1
+          name: entSensorType
+        tag: sensor_type
+        # Sensor type values: voltageAC(1), voltageDC(2), amperes(3),
+        # watts(4), hertz(5), celsius(6), percentRH(7), rpm(8), cmm(9),
+        # truthvalue(10), specialEnum(11), dBm(14)
+
+  # ---------------------------------------------------------------------------
+  # CISCO-PROCESS-MIB: CPU Utilization per Stack Member
+  # ---------------------------------------------------------------------------
+
+  - MIB: CISCO-PROCESS-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.109.1.1.1
+      name: cpmCPUTotalTable
+    symbols:
+
+      # 5-second CPU utilization %
+      - OID: 1.3.6.1.4.1.9.9.109.1.1.1.1.3
+        name: cpmCPUTotal5sec
+
+      # 1-minute CPU utilization %
+      - OID: 1.3.6.1.4.1.9.9.109.1.1.1.1.4
+        name: cpmCPUTotal1min
+
+      # 5-minute CPU utilization %
+      - OID: 1.3.6.1.4.1.9.9.109.1.1.1.1.5
+        name: cpmCPUTotal5min
+
+    metric_tags:
+      - MIB: CISCO-PROCESS-MIB
+        column:
+          OID: 1.3.6.1.4.1.9.9.109.1.1.1.1.2
+          name: cpmCPUTotalPhysicalIndex
+        tag: cpu_index
+
+  # ---------------------------------------------------------------------------
+  # CISCO-MEMORY-POOL-MIB: Memory per Stack Member
+  # ---------------------------------------------------------------------------
+
+  - MIB: CISCO-MEMORY-POOL-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.48.1.1
+      name: ciscoMemoryPoolTable
+    symbols:
+
+      # Used memory (bytes)
+      - OID: 1.3.6.1.4.1.9.9.48.1.1.1.5
+        name: ciscoMemoryPoolUsed
+
+      # Free memory (bytes)
+      - OID: 1.3.6.1.4.1.9.9.48.1.1.1.6
+        name: ciscoMemoryPoolFree
+
+    metric_tags:
+      - column:
+          OID: 1.3.6.1.4.1.9.9.48.1.1.1.3
+          name: ciscoMemoryPoolName
+        tag: memory_pool
+
+# =============================================================================
+# METRIC TAGS (device-level)
+# =============================================================================
+
+metric_tags:
+  - OID: 1.3.6.1.2.1.1.5.0
+    symbol: sysName
+    tag: device_name
+
+  - OID: 1.3.6.1.2.1.1.1.0
+    symbol: sysDescr
+    tag: device_description
+
+# =============================================================================
+# USAGE IN conf.yaml (snmp.d/conf.yaml)
+# =============================================================================
+#
+# instances:
+#   - ip_address: <STACK_ACTIVE_SWITCH_IP>
+#     community_string: <your_community>     # SNMPv2c
+#     # OR for SNMPv3:
+#     # user: <snmp_user>
+#     # authProtocol: SHA
+#     # authKey: <auth_password>
+#     # privProtocol: AES
+#     # privKey: <priv_password>
+#     snmp_version: 2                        # or 3
+#     profile: cisco-catalyst-stackwise      # filename without .yaml
+#     tags:
+#       - "site:dc1"
+#       - "stack:core-stack-01"
+#
+# NOTE: Poll the ACTIVE switch IP only — the stack presents a single
+#       management plane. All member metrics are accessible via the active node.
+#
+# =============================================================================
+# RECOMMENDED MONITORS IN DATADOG
+# =============================================================================
+#
+# 1. Stack member removed:
+#    Query: max:snmp.cswSwitchState{*} by {stack_member} >= 2
+#    Alert when: any member enters state != ready(4)
+#
+# 2. Stack port down:
+#    Query: max:snmp.cswStackPortOperStatus{*} by {stack_port} > 1
+#    Alert when: any stack port is down(2) or forcedDown(3)
+#
+# 3. Ring broken:
+#    Query: min:snmp.cswRingRedundant{*} < 1
+#    Alert when: ring redundancy is lost
+#
+# 4. CPU spike per member:
+#    Query: avg:snmp.cpmCPUTotal5min{*} by {cpu_index} > 85
+#
+# 5. Memory saturation:
+#    Query: (snmp.ciscoMemoryPoolUsed / (snmp.ciscoMemoryPoolUsed +
+#            snmp.ciscoMemoryPoolFree)) * 100 > 80
+#
+# =============================================================================
