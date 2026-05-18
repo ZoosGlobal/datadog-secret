@@ -1,0 +1,247 @@
+# =============================================================================
+# Datadog Custom SNMP Profile: CISCO-ENTITY-SENSOR-MIB
+# =============================================================================
+# Collects physical sensor metrics (temperature, voltage, power, RPM, etc.)
+# from Cisco devices via SNMP.
+#
+# PLACEMENT:
+#   Linux:   /etc/datadog-agent/conf.d/snmp.d/profiles/
+#   Windows: C:\ProgramData\Datadog\conf.d\snmp.d\profiles\
+#
+# USAGE (in snmp.d/conf.yaml):
+#   instances:
+#     - ip_address: 192.168.1.1
+#       profile: cisco-entity-sensor
+#       community_string: public      # SNMPv2
+#       # -- OR for SNMPv3 --
+#       # user: <USER>
+#       # authKey: <AUTH_KEY>
+#       # privKey: <PRIV_KEY>
+#       # authProtocol: SHA
+#       # privProtocol: AES
+#
+# REQUIREMENTS:
+#   - Datadog Agent 7.27+
+#   - SNMP enabled on the Cisco device
+#   - CISCO-ENTITY-SENSOR-MIB (OID 1.3.6.1.4.1.9.9.91) supported by device
+# =============================================================================
+
+name: cisco-entity-sensor
+
+# Match all Cisco devices under enterprise OID 1.3.6.1.4.1.9
+# Narrow this to a specific sysobjectid if needed, e.g.:
+#   sysobjectid: 1.3.6.1.4.1.9.1.516    # Cisco Catalyst 3850
+#   sysobjectid: 1.3.6.1.4.1.9.1.*      # All Cisco devices
+sysobjectid: 1.3.6.1.4.1.9.*
+
+metadata:
+  device:
+    fields:
+      vendor:
+        value: cisco
+
+metrics:
+
+  # ---------------------------------------------------------------------------
+  # entSensorValueTable
+  # OID: 1.3.6.1.4.1.9.9.91.1.1.1
+  # One row per physical sensor. Collects type, scale, precision, value, status.
+  # ---------------------------------------------------------------------------
+  - MIB: CISCO-ENTITY-SENSOR-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.91.1.1.1
+      name: entSensorValueTable
+    symbols:
+
+      # Current sensor reading (raw integer — apply scale + precision to interpret)
+      # Metric: snmp.entSensorValue
+      - OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.4
+        name: entSensorValue
+
+      # Operational status of the sensor
+      # Values: 1=ok, 2=unavailable, 3=nonoperational
+      # Metric: snmp.entSensorStatus
+      - OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.5
+        name: entSensorStatus
+
+      # How often the agent refreshes the value (milliseconds)
+      # Metric: snmp.entSensorValueUpdateRate
+      - OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.7
+        name: entSensorValueUpdateRate
+
+    metric_tags:
+      # Sensor type tag (celsius, rpm, watts, volts, amperes, etc.)
+      # Values: 1=other, 2=unknown, 3=voltsAC, 4=voltsDC, 5=amperes,
+      #         6=watts, 7=hertz, 8=celsius, 9=percentRH,
+      #         10=rpm, 11=cmm, 12=truthvalue
+      - tag: sensor_type
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.1
+          name: entSensorType
+        mapping:
+          1: other
+          2: unknown
+          3: voltsAC
+          4: voltsDC
+          5: amperes
+          6: watts
+          7: hertz
+          8: celsius
+          9: percentRH
+          10: rpm
+          11: cmm
+          12: truthvalue
+
+      # Scale/exponent to apply to the raw value
+      # Values: 1=yocto, 2=zepto, 3=atto, 4=femto, 5=pico,
+      #         6=nano, 7=micro, 8=milli, 9=units, 10=kilo,
+      #         11=mega, 12=giga, 13=tera, 14=exa, 15=peta,
+      #         16=zetta, 17=yotta
+      - tag: sensor_scale
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.2
+          name: entSensorScale
+        mapping:
+          1: yocto
+          2: zepto
+          3: atto
+          4: femto
+          5: pico
+          6: nano
+          7: micro
+          8: milli
+          9: units
+          10: kilo
+          11: mega
+          12: giga
+          13: tera
+          14: exa
+          15: peta
+          16: zetta
+          17: yotta
+
+      # Number of decimal places for fixed-point sensor values
+      - tag: sensor_precision
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.3
+          name: entSensorPrecision
+
+      # Which physical entity this sensor is measuring
+      # (links back to entPhysicalIndex in ENTITY-MIB)
+      - tag: sensor_measured_entity
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.8
+          name: entSensorMeasuredEntity
+
+      # Human-readable name of the physical component (from ENTITY-MIB)
+      # Requires ENTITY-MIB to be loaded; provides labels like "PSU 1", "Fan Tray 2"
+      - tag: sensor_name
+        MIB: ENTITY-MIB
+        symbol:
+          OID: 1.3.6.1.2.1.47.1.1.1.1.7
+          name: entPhysicalName
+
+      # Physical description of the component
+      - tag: sensor_description
+        MIB: ENTITY-MIB
+        symbol:
+          OID: 1.3.6.1.2.1.47.1.1.1.1.2
+          name: entPhysicalDescr
+
+  # ---------------------------------------------------------------------------
+  # entSensorThresholdTable
+  # OID: 1.3.6.1.4.1.9.9.91.1.2.1
+  # Threshold evaluation results — whether each threshold is currently breached.
+  # ---------------------------------------------------------------------------
+  - MIB: CISCO-ENTITY-SENSOR-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.91.1.2.1
+      name: entSensorThresholdTable
+    symbols:
+
+      # Whether the threshold is currently breached: 1=true, 2=false
+      # Metric: snmp.entSensorThresholdEvaluation
+      - OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.5
+        name: entSensorThresholdEvaluation
+
+      # The threshold value configured (for reference/comparison)
+      # Metric: snmp.entSensorThresholdValue
+      - OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.4
+        name: entSensorThresholdValue
+
+    metric_tags:
+      # Severity of this threshold: 1=other, 10=minor, 20=major, 30=critical
+      - tag: threshold_severity
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.2
+          name: entSensorThresholdSeverity
+        mapping:
+          1: other
+          10: minor
+          20: major
+          30: critical
+
+      # Relation/comparison operator: 1=lessThan, 2=lessOrEqual,
+      # 3=greaterThan, 4=greaterOrEqual, 5=equalTo, 6=notEqualTo
+      - tag: threshold_relation
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.3
+          name: entSensorThresholdRelation
+        mapping:
+          1: lessThan
+          2: lessOrEqual
+          3: greaterThan
+          4: greaterOrEqual
+          5: equalTo
+          6: notEqualTo
+
+      # Whether notifications are enabled for this threshold
+      - tag: threshold_notif_enabled
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.6
+          name: entSensorThresholdNotificationEnable
+        mapping:
+          1: "true"
+          2: "false"
+
+      # Physical sensor name (from ENTITY-MIB) for correlation
+      - tag: sensor_name
+        MIB: ENTITY-MIB
+        symbol:
+          OID: 1.3.6.1.2.1.47.1.1.1.1.7
+          name: entPhysicalName
+
+  # ---------------------------------------------------------------------------
+  # Global notification control
+  # OID: 1.3.6.1.4.1.9.9.91.1.3.1
+  # Whether threshold notifications are globally enabled on the device.
+  # ---------------------------------------------------------------------------
+  - MIB: CISCO-ENTITY-SENSOR-MIB
+    symbol:
+      OID: 1.3.6.1.4.1.9.9.91.1.3.1.0
+      name: entSensorThreshNotifGlobalEnable
+    # 1=true (notifications enabled globally), 2=false (suppressed globally)
+
+# =============================================================================
+# METRIC REFERENCE SUMMARY
+# =============================================================================
+# snmp.entSensorValue            - Raw sensor reading (combine with type/scale/precision)
+# snmp.entSensorStatus           - 1=ok | 2=unavailable | 3=nonoperational
+# snmp.entSensorValueUpdateRate  - Polling interval in ms
+# snmp.entSensorThresholdValue   - Configured threshold value
+# snmp.entSensorThresholdEvaluation - 1=breached | 2=ok
+# snmp.entSensorThreshNotifGlobalEnable - 1=global notifs on | 2=off
+#
+# KEY TAGS (available on each metric):
+#   sensor_type         - celsius | rpm | watts | voltsDC | voltsAC | amperes | ...
+#   sensor_scale        - milli | units | kilo | mega | ...
+#   sensor_precision    - decimal places
+#   sensor_name         - human-readable component name (e.g. "Fan 1", "PSU 2")
+#   sensor_description  - component description
+#   threshold_severity  - minor | major | critical
+#   threshold_relation  - lessThan | greaterThan | ...
+#
+# EXAMPLE MONITOR (Datadog UI):
+#   avg:snmp.entSensorValue{sensor_type:celsius} > 80
+#   Alert message: "{{sensor_name.name}} temperature critical on {{host.name}}"
+# =============================================================================
