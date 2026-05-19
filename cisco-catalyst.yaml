@@ -1,0 +1,280 @@
+# =============================================================================
+# Datadog SNMP Profile: Cisco Catalyst (Override + Entity Sensor Extension)
+#
+# This file OVERRIDES the default Datadog cisco-catalyst.yaml profile.
+# Place it in the CUSTOM profiles directory (not default_profiles):
+#
+#   Linux   : /etc/datadog-agent/conf.d/snmp.d/profiles/cisco-catalyst.yaml
+#   Windows : C:\ProgramData\Datadog\conf.d\snmp.d\profiles\cisco-catalyst.yaml
+#
+# What this does:
+#   - Extends all built-in Cisco Catalyst metrics (via _base, _cisco-generic,
+#     _cisco-catalyst base helpers) — nothing is lost
+#   - Adds CISCO-ENTITY-SENSOR-MIB metrics on top:
+#       entSensorValue       → temperature, voltage, current, power, fan, SFP optical
+#       entSensorStatus      → sensor operational status
+#       entSensorThreshold   → device-configured threshold breach detection
+#
+# Confirmed on: Catalyst 9300, 9400, 9500, 3850 (standalone + stack)
+#
+# Devices matched via sysobjectid (auto-applied, no profile: line needed):
+#   Catalyst 3750 stack, 3850-24/48 (P/U variants), 9300 stack,
+#   9404R, 9407R, 9410R, 9500-32C, 9500-32QC, 9500-48Y4C,
+#   9500 stack, 9606R
+# =============================================================================
+
+name: cisco-catalyst
+
+# -----------------------------------------------------------------------------
+# Extend Datadog built-in base helpers — keeps ALL existing Cisco Catalyst
+# metrics. Same pattern as the Arista custom profile using _arista.yaml.
+# -----------------------------------------------------------------------------
+extends:
+  - _base.yaml
+  - _cisco-generic.yaml
+  - _cisco-catalyst.yaml
+
+device:
+  vendor: "cisco"
+
+metadata:
+  device:
+    fields:
+      type:
+        value: "switch"
+
+# -----------------------------------------------------------------------------
+# sysobjectid — auto-matches devices, no need for profile: in conf.yaml
+# -----------------------------------------------------------------------------
+sysobjectid:
+  - 1.3.6.1.4.1.9.1.516     # Cisco Catalyst 3750 stack
+  - 1.3.6.1.4.1.9.1.1641    # Cisco Catalyst 3850-48P
+  - 1.3.6.1.4.1.9.1.1642    # Cisco Catalyst 3850-24P
+  - 1.3.6.1.4.1.9.1.1643    # Cisco Catalyst 3850-48
+  - 1.3.6.1.4.1.9.1.1644    # Cisco Catalyst 3850-24
+  - 1.3.6.1.4.1.9.1.1767    # Cisco Catalyst 3850-24U
+  - 1.3.6.1.4.1.9.1.1768    # Cisco Catalyst 3850-48U
+  - 1.3.6.1.4.1.9.1.2494    # Cisco Catalyst 9300 stack
+  - 1.3.6.1.4.1.9.1.2499    # Cisco Catalyst 9404R
+  - 1.3.6.1.4.1.9.1.2500    # Cisco Catalyst 9407R
+  - 1.3.6.1.4.1.9.1.2501    # Cisco Catalyst 9410R
+  - 1.3.6.1.4.1.9.1.2566    # Cisco Catalyst 9500-32C
+  - 1.3.6.1.4.1.9.1.2567    # Cisco Catalyst 9500-32QC
+  - 1.3.6.1.4.1.9.1.2568    # Cisco Catalyst 9500-48Y4C
+  - 1.3.6.1.4.1.9.1.2593    # Cisco Catalyst 9500 stack
+  - 1.3.6.1.4.1.9.1.2648    # Cisco Catalyst 9606R
+
+metrics:
+
+  # ---------------------------------------------------------------------------
+  # TABLE : entSensorValueTable
+  # MIB   : CISCO-ENTITY-SENSOR-MIB
+  # OID   : 1.3.6.1.4.1.9.9.91.1.1.1
+  #
+  # One row per physical sensor. Index = entPhysicalIndex (shared with
+  # ENTITY-MIB entPhysicalTable, which provides the human-readable name).
+  #
+  # Metrics:
+  #   snmp.entSensorValue  — raw sensor reading (apply scale to decode)
+  #   snmp.entSensorStatus — 1=ok | 2=unavailable | 3=nonoperational
+  #
+  # Tags:
+  #   sensor_name        — e.g. "Switch 1 - HotSpot Temp Sensor", "PS1 FAN"
+  #   sensor_description — component description from ENTITY-MIB
+  #   sensor_type        — celsius | rpm | watts | voltsDC | amperes | dBm
+  #   sensor_scale       — milli | units  (critical for value decoding)
+  #
+  # Confirmed sensor names on Cisco 9300/3850 stack:
+  #   "Switch x - Inlet Temp Sensor"       (x012, range: 0–56°C)
+  #   "Switch x - Outlet Temp Sensor"      (x013, range: 0–125°C)
+  #   "Switch x - HotSpot Temp Sensor"     (x014, range: 0–125°C)
+  #   "GigabitEthernetx/1/4 Module Temperature Sensor"
+  #   "GigabitEthernetx/1/4 Supply Voltage Sensor"
+  #   "GigabitEthernetx/1/4 Bias Current Sensor"
+  #   "GigabitEthernetx/1/4 Transmit Power Sensor"
+  #   "GigabitEthernetx/1/4 Receive Power Sensor"
+  #   "PS1/PS2 Vout", "PS1/PS2 Vin"
+  #   "PS1/PS2 CURin", "PS1/PS2 CURout"
+  #   "PS1/PS2 POWin", "PS1/PS2 POWout"
+  #   "PS1/PS2 FAN"
+  # ---------------------------------------------------------------------------
+  - MIB: CISCO-ENTITY-SENSOR-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.91.1.1.1
+      name: entSensorValueTable
+    symbols:
+      # Raw sensor reading — decode using sensor_scale + sensor_type:
+      #   Temperature : scale=units  → value as-is (°C)
+      #   Voltage     : scale=milli  → value / 1000 (V)
+      #   Current     : scale=milli  → value / 1000 (A)
+      #   Power       : scale=milli  → value / 1000 (W)
+      #   Fan         : scale=units  → value as-is (RPM)
+      #   SFP optical : scale=units  → value as-is (dBm, negative)
+      - OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.4
+        name: entSensorValue
+
+      # Operational status of the sensor
+      # 1=ok  2=unavailable  3=nonoperational
+      - OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.5
+        name: entSensorStatus
+
+    metric_tags:
+      # Human-readable sensor name from ENTITY-MIB entPhysicalTable
+      - tag: sensor_name
+        MIB: ENTITY-MIB
+        symbol:
+          OID: 1.3.6.1.2.1.47.1.1.1.1.7
+          name: entPhysicalName
+        table: entPhysicalTable
+
+      # Physical component description
+      - tag: sensor_description
+        MIB: ENTITY-MIB
+        symbol:
+          OID: 1.3.6.1.2.1.47.1.1.1.1.2
+          name: entPhysicalDescr
+        table: entPhysicalTable
+
+      # Sensor data type
+      # Observed on Cisco 9300/3850:
+      #   4=voltsDC  5=amperes  6=watts  8=celsius  10=rpm  14=dBm (Cisco ext)
+      - tag: sensor_type
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.1
+          name: entSensorType
+        mapping:
+          1: other
+          2: unknown
+          3: voltsAC
+          4: voltsDC
+          5: amperes
+          6: watts
+          7: hertz
+          8: celsius
+          9: percentRH
+          10: rpm
+          11: cmm
+          12: truthvalue
+          14: dBm
+
+      # Scale exponent — required to convert raw value to real-world units
+      # Observed on Cisco 9300/3850:
+      #   8=milli → divide by 1000
+      #   9=units → use as-is
+      - tag: sensor_scale
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.2
+          name: entSensorScale
+        mapping:
+          6: nano
+          7: micro
+          8: milli
+          9: units
+          10: kilo
+          11: mega
+          12: giga
+
+      # Decimal precision (informational)
+      - tag: sensor_precision
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.1.1.1.3
+          name: entSensorPrecision
+
+  # ---------------------------------------------------------------------------
+  # TABLE : entSensorThresholdTable
+  # MIB   : CISCO-ENTITY-SENSOR-MIB
+  # OID   : 1.3.6.1.4.1.9.9.91.1.2.1
+  #
+  # Device-configured thresholds. Reports whether the device itself considers
+  # a sensor to be in a breach condition. No manual threshold config needed.
+  # Entries created at boot/FRU insert, deleted at FRU removal.
+  #
+  # Metrics:
+  #   snmp.entSensorThresholdEvaluation — 1=breached | 2=ok
+  #   snmp.entSensorThresholdValue      — the configured threshold value
+  #
+  # Tags:
+  #   sensor_name        — links back to the sensor (same as above)
+  #   threshold_severity — minor | major | critical
+  #   threshold_relation — lessThan | greaterThan | etc.
+  # ---------------------------------------------------------------------------
+  - MIB: CISCO-ENTITY-SENSOR-MIB
+    table:
+      OID: 1.3.6.1.4.1.9.9.91.1.2.1
+      name: entSensorThresholdTable
+    symbols:
+      # 1 = threshold condition TRUE (breached)
+      # 2 = threshold condition FALSE (ok)
+      - OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.5
+        name: entSensorThresholdEvaluation
+
+      # The configured threshold value (same unit/scale as entSensorValue)
+      - OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.4
+        name: entSensorThresholdValue
+
+    metric_tags:
+      - tag: sensor_name
+        MIB: ENTITY-MIB
+        symbol:
+          OID: 1.3.6.1.2.1.47.1.1.1.1.7
+          name: entPhysicalName
+        table: entPhysicalTable
+
+      # Severity of this threshold
+      # 1=other  10=minor  20=major  30=critical
+      - tag: threshold_severity
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.2
+          name: entSensorThresholdSeverity
+        mapping:
+          1: other
+          10: minor
+          20: major
+          30: critical
+
+      # Alarm trigger condition
+      # entSensorValue {relation} entSensorThresholdValue → alarm fires
+      - tag: threshold_relation
+        symbol:
+          OID: 1.3.6.1.4.1.9.9.91.1.2.1.1.3
+          name: entSensorThresholdRelation
+        mapping:
+          1: lessThan
+          2: lessOrEqual
+          3: greaterThan
+          4: greaterOrEqual
+          5: equalTo
+          6: notEqualTo
+
+# =============================================================================
+# METRIC DECODING CHEAT SHEET
+#
+#   Metric                  sensor_type   sensor_scale   Formula
+#   ──────────────────────────────────────────────────────────────
+#   Temperature (°C)        8 (celsius)   9 (units)      value
+#   Fan Speed (RPM)         10 (rpm)      9 (units)      value
+#   PSU Voltage (V)         4 (voltsDC)   8 (milli)      value / 1000
+#   PSU Current (A)         5 (amperes)   8 (milli)      value / 1000
+#   PSU Power (W)           6 (watts)     8 (milli)      value / 1000
+#   SFP TX/RX Power (dBm)   14 (dBm)      9 (units)      value (negative)
+#   SFP Bias Current (mA)   5 (amperes)   8 (milli)      value (mA)
+#   SFP Supply Voltage (mV) 4 (voltsDC)   8 (milli)      value (mV)
+#
+# DATADOG DASHBOARD QUERIES
+#
+#   Temperature  : avg:snmp.entSensorValue{sensor_type:8} by {sensor_name,snmp_device}
+#   Fan RPM      : avg:snmp.entSensorValue{sensor_type:10} by {sensor_name,snmp_device}
+#   PSU Power(W) : avg:snmp.entSensorValue{sensor_type:6} by {sensor_name,snmp_device} / 1000
+#   PSU Voltage  : avg:snmp.entSensorValue{sensor_type:4,sensor_name:*vin*} by {sensor_name,snmp_device} / 1000
+#   PSU Current  : avg:snmp.entSensorValue{sensor_type:5,sensor_name:*cur*} by {sensor_name,snmp_device} / 1000
+#   SFP Optical  : avg:snmp.entSensorValue{sensor_type:14} by {sensor_name,snmp_device}
+#   Breach Check : max:snmp.entSensorThresholdEvaluation{threshold_severity:critical} by {sensor_name,snmp_device}
+#
+# RECOMMENDED MONITORS
+#
+#   HotSpot > 80°C  : max:snmp.entSensorValue{sensor_type:8,sensor_name:*hotspot*} by {sensor_name,snmp_device} > 80
+#   Fan < 1000 RPM  : min:snmp.entSensorValue{sensor_type:10} by {sensor_name,snmp_device} < 1000
+#   Sensor not OK   : max:snmp.entSensorStatus{*} by {sensor_name,snmp_device} > 1
+#   RX Power < -40  : min:snmp.entSensorValue{sensor_type:14,sensor_name:*receive*} by {sensor_name,snmp_device} < -40
+#   Critical breach : max:snmp.entSensorThresholdEvaluation{threshold_severity:critical} by {sensor_name,snmp_device} > 1
+# =============================================================================
